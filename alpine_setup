@@ -1,0 +1,59 @@
+#!/bin/sh
+
+#---------------------------------------------------------------------[ START ]-
+
+set -x
+PS4="$(printf '\e[38;5;10m[ CMD ] \e[m')"
+
+#----------------------------------------------------------------------[ USER ]-
+
+adduser -g sidd sidd
+
+for g in lp wheel audio input video netdev; do
+	adduser sidd "$g"
+done
+
+#----------------------------------------------------------------------[ PKGS ]-
+
+setup-xorg-base xf86-video-intel xf86-input-libinput
+apk add \
+	doas intel-ucode \
+	htop light light-udev \
+	musl-locales font-terminus font-noto-all font-noto-cjk \
+	mandoc mandoc-apropos man-pages docs
+
+fc-cache -fv
+
+#------------------------------------------------------------------[ WPA CONF ]-
+
+WPA_PATH='/etc/wpa_supplicant/wpa_supplicant.conf'
+WPA_CONF='ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=wheel'
+
+{
+	printf '%s\n' "$WPA_CONF"
+	cat "$WPA_PATH"
+} > /tmp/wpa_supplicant.conf
+mv /tmp/wpa_supplicant.conf "$WPA_PATH"
+
+rc-service wpa_supplicant restart
+
+#---------------------------------------------------------------[ LOCALE CONF ]-
+
+LOCALE_PATH='/etc/profile.d/20locale.sh'
+
+sed -i 's/[#]*\(unicode=\).*/\1"YES"/g' /etc/rc.conf
+
+{
+	printf 'LANG=en_US.UTF8\n'
+	cat "$LOCALE_PATH"
+} > /tmp/20locale.sh
+mv /tmp/20locale.sh "$LOCALE_PATH"
+
+#----------------------------------------------------------------------[ DOAS ]-
+
+mkdir -p /etc/doas.d
+echo 'permit :wheel' >> /etc/doas.d/doas.conf
+
+#-----------------------------------------------------------------------[ FIN ]-
+
+set +x

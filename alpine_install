@@ -1,0 +1,99 @@
+#!/bin/sh
+
+#---------------------------------------------------------------------[ START ]-
+
+set -x
+PS4=$(printf '\e[38;5;10m[ CMD ] \e[m')
+
+#--------------------------------------------------------------------[ KEYMAP ]-
+
+setup-keymap us us
+
+#-------------------------------------------------------------------[ NETWORK ]-
+
+echo "alpine" > /etc/hostname
+
+cat <<-__EOF__  > /etc/hosts
+127.0.0.1	alpine.localdomain alpine
+::1		alpine.localdomain alpine
+__EOF__
+
+rc-service hostname restart
+
+setup-interfaces
+mkdir /etc/udhcpc
+echo 'RESOLV_CONF="no"' > /etc/udhcpc/udhcpc.conf
+
+cat <<-__EOF__ > /etc/resolv.conf
+nameserver 9.9.9.9
+nameserver 1.1.1.1
+__EOF__
+
+rc-update add networking boot
+rc-update add seedrng boot
+
+rc-service networking start
+rc-service seedrng start
+
+#------------------------------------------------------------------[ PACKAGES ]-
+
+setup-apkrepos -f
+
+sed -i 's/^#//g' /etc/apk/repositories
+sed -i 's/^\/media/#\0/g' /etc/apk/repositories
+
+apk add tzdata git lsblk efibootmgr grub-efi cfdisk e2fsprogs
+
+#-----------------------------------------------------------------------[ NTP ]-
+
+install -Dm 0644 /usr/share/zoneinfo/Asia/Kolkata /etc/zoneinfo/Asia/Kolkata
+
+cat <<-__EOF__ >> /etc/profile.d/timezone.sh
+export TZ='Asia/Kolkata'
+__EOF__
+
+export TZ='Asia/Kolkata'
+
+setup-ntp busybox
+
+#----------------------------------------------------------------------[ ACPI ]-
+
+git clone https://github.com/sidd-dino/dots.git ~/dots
+
+cp -r ~/dots/etc/acpi /etc/
+
+rm -rf /etc/acpi/PWRF /etc/acpi/scripts/bri_*
+
+cat <<-__EOF__ > /etc/conf.d/acpid
+ACPID_OPTS="-a /etc/acpi/acpid.conf -M /etc/acpi/acpi.map"
+__EOF__
+
+rc-update add acpid
+rc-service acpid start
+
+#--------------------------------------------------------------------[ PASSWD ]-
+
+passwd root
+
+#---------------------------------------------------------------------[ DISKS ]-
+
+mkfs.vfat -F32 /dev/sda1
+mkfs.ext4 /dev/sda3
+mkswap /dev/sda2
+swapon /dev/sda2
+
+mount /dev/sda3 /mnt
+mkdir -p /mnt/boot/efi
+mount /dev/sda1 /mnt/boot/efi
+
+BOOTFS=vfat BOOTLOADER=grub DISKLABEL=gpt USE_EFI=1 \
+	setup-disk -m sys /mnt
+
+printf '/dev/sda2\tnone\tswap\tdefaults\t0 0\n' >> /mnt/etc/fstab
+
+#-----------------------------------------------------------------------[ FIN ]-
+
+umount /mnt/boot/efi
+umount /mnt
+
+set +x

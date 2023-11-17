@@ -1,0 +1,305 @@
+#!/usr/bin/env bash
+#
+#-----------------------------------------------------------------
+# SF_FROM       local-part@domain
+#                 Used to set the email address of sender
+#                 - Default is ""
+#-----------------------------------------------------------------
+# SF_TO         local-part@domain
+#                 Used to set the email address of receiver 
+#                 - Default is ""
+#-----------------------------------------------------------------
+# SF_WIDTH      int
+#                 Allows the change of the email 
+#                 content's width (number of charcters wide)
+#                 - Default is 60
+#-----------------------------------------------------------------
+# SF_SEPARATOR  char
+#                 Allows the change of the character used to
+#                 draw a separator line between each SMSs
+#                 in the email.
+#                  - Default is '='
+#-----------------------------------------------------------------
+# SF_COLOR      on/off
+#                 Enable/Disable colored output.
+#                 - Default is on.
+#-----------------------------------------------------------------
+# SF_LOG        on/off
+#                 Enable/Disable whether output should be 
+#                 redirected to a logfile.
+#                 - Default is off.
+#-----------------------------------------------------------------
+# SF_LOGFILE    value
+#                 Which file to redirect output to
+#                 (when SF_LOG is on).
+#                 - Default is ${PREFIX}/var/log/sms.log
+#-----------------------------------------------------------------
+
+id_file="$HOME/.smsvar"
+pid_file="$PREFIX/tmp/sms.pid"
+
+width="${SF_WIDTH:-60}"
+format='MIME-Version: 1.0
+Date: %s
+From: %s
+To: %s
+Subject: SMS Forward
+Content-Type: text/html; charset="UTF-8"
+
+<html><body><pre>
+%s
+</pre></body></html>
+'
+
+AWK_SCRIPT='
+BEGIN {
+    numb = ""
+    rcvd = ""
+    body = ""
+    prnt = 0
+    printf "##DIVD##\n";
+}
+
+$0 !~ /^[[:space:]]*("(type|read|_id)":|\{|\}|\[|\])/ {
+    sub(/^[[:space:]]*/, "", $0);
+
+    if ( $0 ~ /.*"threadid":/ && prnt == 1 ) {
+        printf "[ %s ][ %s ]##NEWLINE##%s##DIVD##\n", rcvd, numb, body;
+    }
+
+    sub(/",$/, "", $0);
+
+    if ( $0 ~ /^"number": / ) {
+        sub(/^"number": "/, "", $0);
+        numb = $0;
+    }
+
+    if ( $0 ~ /^"received": / ) {
+        sub(/^"received": "/, "", $0);
+        rcvd = $0;
+    }
+
+    if ( $0 ~ /^"body": / ) {
+        sub(/^"body": "/, "", $0);
+        body = $0;
+        prnt = 1;
+    }
+}
+
+END {
+    if ( prnt == 1 ) {
+        printf "[ %s ][ %s ]##NEWLINE##%s##DIVD##\n", rcvd, numb, body;
+    }
+}'
+
+printf -v divider "%${width}s"
+divider="${divider// /${SF_DIVIDER:-=}}"
+
+res='\e[0m'
+esc='\e'
+col() {
+    case ${SF_COLOR:=on} in
+        on)
+            printf '%b' "${esc}[38;5;${1}m"
+        ;;
+
+        off)
+            printf ''
+        ;;
+    esac
+}
+
+log() {
+    # S Start
+    # E End
+    # W Warn
+    # P Ping
+    # F Forward
+    case "$1$2" in "") ;;
+        S*)
+            printf '%b%-*s%b%(%s)T %s\n' \
+                   "$(col 10)" "11" "START" "${res}" '-1' "$2"
+        ;;
+
+        E*)
+            printf '%b%-*s%b%(%s)T %s\n' \
+                   "$(col 9)" "11" "EXIT" "${res}" '-1' "$2"
+        ;;
+
+        W*)
+            printf '%b%-*s%b%(%s)T %s\n' \
+                   "$(col 11)" "11" "WARN" "${res}" '-1' "$2"
+        ;;
+        
+        # PING -------------------------------------------------
+        P=)
+            printf '%b%-*s%b[%s]%b %(%s)T %s\n' \
+                "$(col 14)" "11" "PING" \
+                "$(col 8)" "STRT" "${res}" '-1' "${3}"
+        ;;
+
+        P+)
+            printf '%b%-*s%b[%s]%b %(%s)T %s\n' \
+                "$(col 14)" "11" "PING" \
+                "$(col 10)" "SENT" "${res}" '-1' "${3}"
+        ;;
+
+        P-)
+            printf '%b%-*s%b[%s]%b %(%s)T %s\n' \
+                "$(col 14)" "11" "PING" \
+                "$(col 9)" "FAIL" "${res}" '-1' "${3}"
+        ;;
+
+        # FORWARD ----------------------------------------------
+        F=)
+            printf '%b%-*s%b[%s]%b %(%s)T %s\n' \
+                "$(col 12)" "11" "FORWARD" \
+                "$(col 8)" "STRT" "${res}" '-1' "${3}"
+        ;;
+
+        F+)
+            printf '%b%-*s%b[%s]%b %(%s)T %s\n' \
+                "$(col 12)" "11" "FORWARD" \
+                "$(col 10)" "SENT" "${res}" '-1' "${3}"
+        ;;
+
+        F-)
+            printf '%b%-*s%b[%s]%b %(%s)T %s\n' \
+                "$(col 12)" "11" "FORWARD" \
+                "$(col 9)" "FAIL" "${res}" '-1' "${3}"
+        ;;
+
+        # WHUT ?? ----------------------------------------------
+        *)
+            printf '%b%-*s%b%s\n' \
+                "$(col 13)" "11" "WHUT ??" \
+                "${res}" "$*"
+        ;;
+    esac
+}
+
+store_oID() {
+cat <<-__SMS_ID__ > "$id_file"
+oID=$oID
+__SMS_ID__
+}
+
+get_last_sms_id() {
+    termux-sms-list -t inbox -l 1 |\
+    sed 's/^[[:space:]]*//g' |\
+    awk '$0 ~ /^"_id": / { sub(/^"_id": /, "", $0); print $0; }'
+}
+
+get_sms() {
+    termux-sms-list -t inbox -l "$1" |\
+    awk "$AWK_SCRIPT" |\
+    sed -e 's/</\&lt;/g' -e 's/>/\&gt;/g' \
+        -e 's/##NEWLINE##/\n/g' -e 's/##DIVD##/\n\0/g' |\
+    fold -s -w "$width" |\
+    sed "s/##DIVD##/$divider/g"
+}
+
+get_sms_reverse() {
+    termux-sms-list -t inbox -l "$1" |\
+    awk "$AWK_SCRIPT" | sort -r |\
+    sed -e 's/</\&lt;/g' -e 's/>/\&gt;/g' \
+        -e 's/##NEWLINE##/\n/g' -e 's/##DIVD##/\n\0/g' |\
+    fold -s -w "$width" |\
+    sed "s/##DIVD##/$divider/g"
+}
+
+send_email() {
+    printf "$format" \
+           "$(date '+%a, %d %b %Y %H:%M:%S %z')" \
+           "$SF_FROM" \
+           "$SF_TO" \
+           "$( get_sms_reverse "$1" )" |\
+    msmtp "$SF_TO"
+}
+
+ping() {
+    trap '' USR1
+
+    pID="$(get_last_sms_id)"
+    log P = "$((pID-9))-${pID}"
+
+    if send_email "10"; then
+        log P + "$((pID-9))-${pID}"
+    else
+        log P - "$((pID-9))-${pID}"
+        termux-torch on
+        quit 1
+    fi
+
+    trap 'ping' USR1
+}
+
+quit() {
+    trap '' USR1
+    trap '' EXIT
+
+    [[ "$2" != W ]] && rm "$pid_file"  
+    log E "$$"
+    exit "${1:-0}"
+}
+
+main() {
+    trap 'quit' EXIT
+    trap 'ping' SIGUSR1
+
+    log S "$$"
+
+    [[ -s "$pid_file" ]] && {
+        read -r pid < "$pid_file"
+        [[ -d "/proc/$pid" ]] && {
+            log W "$$"
+            printf  'err: forwarder already running (%s)\n' "$pid" >&2
+            quit 1 W
+        }
+    }
+
+    [[ -z "$SF_FROM" || -z "$SF_TO" ]] && {
+        set -- "SF_FROM=${SF_FROM} SF_TO=${SF_TO}"
+        log W "$*"
+        printf  'err: bad address values [ %s ]' "$*" >&2
+        quit 1 W
+    }
+
+    printf '%s' "$$" > "$pid_file"
+
+    enable -f "$PREFIX/lib/bash/sleep" sleep 2>/dev/null
+
+    [[ -e "$id_file" ]] && . "$id_file"
+    oID="${oID:-0}"
+
+    while :; do
+        nID="$(get_last_sms_id)"
+        
+        (( nID > oID )) && {
+            log F = "$((oID+1))-$nID"
+
+            if send_email "$((nID - oID))"; then
+                log F + "$((oID+1))-$nID"
+
+                ((oID=nID))
+                store_oID
+            else
+                log F - "$((oID+1))-$nID"
+ 
+                termux-torch on
+                quit 1
+            fi
+        }
+
+        sleep 5s
+    done
+}
+
+SF_LOG="${SF_LOG:-off}"
+if [[ $SF_LOG == "off" ]]; then
+    main "$@"
+else
+    main "$@" >> "${SF_LOGFILE:-${PREFIX}/var/log/sms.log}"
+fi
+
+# vim: cc=81 sw=4 ts=8 sts=0 et sta
