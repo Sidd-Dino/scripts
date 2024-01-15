@@ -15,27 +15,8 @@ done
 
 #----------------------------------------------------------------------[ PKGS ]-
 
-setup-xorg-base xf86-video-intel xf86-input-libinput
-apk add \
-	doas intel-ucode \
-	htop light light-udev \
-	musl-locales font-terminus font-noto-all font-noto-cjk \
-	mandoc mandoc-apropos man-pages docs
-
-fc-cache -fv
-
-#------------------------------------------------------------------[ WPA CONF ]-
-
-WPA_PATH='/etc/wpa_supplicant/wpa_supplicant.conf'
-WPA_CONF='ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=wheel'
-
-{
-	printf '%s\n' "$WPA_CONF"
-	cat "$WPA_PATH"
-} > /tmp/wpa_supplicant.conf
-mv /tmp/wpa_supplicant.conf "$WPA_PATH"
-
-rc-service wpa_supplicant restart
+apk add doas musl-locales intel-ucode htop git \
+        man-pages mandoc mandoc-apropos docs
 
 #---------------------------------------------------------------[ LOCALE CONF ]-
 
@@ -43,17 +24,34 @@ LOCALE_PATH='/etc/profile.d/20locale.sh'
 
 sed -i 's/[#]*\(unicode=\).*/\1"YES"/g' /etc/rc.conf
 
-{
-	printf 'LANG=en_US.UTF8\n'
-	cat "$LOCALE_PATH"
-} > /tmp/20locale.sh
-mv /tmp/20locale.sh "$LOCALE_PATH"
+tee "$LOCALE_PATH" <<-__LOCALE_FILE__
+        export LANG=en_US.UTF-8
+        export CHARSET=\${CHARSET:-UTF-8}
+        export LC_COLLATE=\${LC_COLLATE:-C}
+__LOCALE_FILE__
 
 #----------------------------------------------------------------------[ DOAS ]-
 
 mkdir -p /etc/doas.d
-echo 'permit :wheel' >> /etc/doas.d/doas.conf
+printf 'permit :wheel\n' >> /etc/doas.conf
+
+#----------------------------------------------------------------------[ XORG ]-
+
+cat <<__MSG__
+Install Xorg and fonts ?
+
+Press
+    Ctrl-C to cancel
+    Enter  to continue
+__MSG__
+
+read -r _ && setup-xorg-base xf86-video-intel xf86-input-libinput \
+                             font-terminus font-noto-all font-noto-cjk
+
+fc-cache -fv
 
 #-----------------------------------------------------------------------[ FIN ]-
 
 set +x
+
+# vim: set ts=8 sw=8 et cc=81:

@@ -1,0 +1,29 @@
+#!/bin/sh
+
+#---------------------------------------------------------------------[ START ]-
+
+set -x
+PS4=$(printf '\e[38;5;10m[ CMD ] \e[m')
+
+#------------------------------------------------------------------[ PACKAGES ]-
+
+apk add efibootmgr grub-efi e2fsprogs
+
+#---------------------------------------------------------------------[ DISKS ]-
+
+rc-update add swap boot
+
+BOOTFS=vfat BOOTLOADER=grub DISKLABEL=gpt USE_EFI=1 \
+	setup-disk -m sys /mnt
+
+blkid | while read -r blk_ln; do
+        eval "${blk_ln##*:}"
+        [ "$TYPE" = "swap" ] && \
+                printf 'UUID=%s\tswap\tswap\tdefaults\t0 0\n' "$UUID"
+done >> /mnt/etc/fstab
+
+#-----------------------------------------------------------------------[ FIN ]-
+
+set +x
+
+# vim: set ts=8 sw=8 et cc=81:
