@@ -1,10 +1,5 @@
 #!/bin/sh
 
-#---------------------------------------------------------------------[ START ]-
-
-set -x
-PS4=$(printf '\e[38;5;10m[ CMD ] \e[m')
-
 #--------------------------------------------------------------------[ KEYMAP ]-
 
 setup-keymap us us
@@ -16,23 +11,25 @@ printf 'alpine\n'           > /etc/hostname
 printf 'RESOLV_CONF="no"\n' > /etc/udhcpc/udhcpc.conf
 
 cat <<-__HOSTS__  > /etc/hosts
-        127.0.0.1	alpine.localdomain alpine
-        ::1		alpine.localdomain alpine
+127.0.0.1	alpine.localdomain alpine
+::1		alpine.localdomain alpine
 __HOSTS__
 
 cat <<-__RESOLV_CONF__ > /etc/resolv.conf
-        nameserver 9.9.9.9
-        nameserver 1.1.1.1
+nameserver 9.9.9.9
+nameserver 1.1.1.1
 __RESOLV_CONF__
-
-cat <<-__WPA_CONF__ > /etc/wpa_supplicant/wpa_supplicant.conf
-        ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=wheel
-        update_config=1
-__WPA_CONF__
 
 rc-service hostname restart
 
 setup-interfaces
+
+WPA_CONF_FILE='/etc/wpa_supplicant/wpa_supplicant.conf'
+cat -- - "${WPA_CONF_FILE}" <<-__WPA_CONF__ | tee "${WPA_CONF_FILE}"
+ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=wheel
+update_config=1
+__WPA_CONF__
+
 rc-update add networking boot && rc-service networking start
 rc-update add seedrng boot && rc-service seedrng start
 
@@ -43,13 +40,13 @@ setup-apkrepos -f
 sed -i  -e 's%^#%%g' \
         -e 's%^\/media%#\0%g' /etc/apk/repositories
 
-apk add tzdata acpid acpid-openrc zzz cfdisk lsblk
+apk -q add tzdata acpid acpid-openrc zzz cfdisk lsblk
 
 #-----------------------------------------------------------------------[ NTP ]-
 
 install -Dm 0644 /usr/share/zoneinfo/Asia/Kolkata /etc/zoneinfo/Asia/Kolkata
 
-cat <<-__EOF__ >> /etc/profile.d/timezone.sh
+cat -- - <<-__EOF__ >> /etc/profile.d/timezone.sh
 export TZ='${TZ:-Asia/Kolkata}'
 __EOF__
 
@@ -64,9 +61,3 @@ rc-update add acpid && rc-service acpid start
 #--------------------------------------------------------------------[ PASSWD ]-
 
 passwd root
-
-#-----------------------------------------------------------------------[ FIN ]-
-
-set +x
-
-# vim: set ts=8 sw=8 et cc=81:

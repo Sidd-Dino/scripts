@@ -1,10 +1,5 @@
 #!/bin/sh
 
-#---------------------------------------------------------------------[ START ]-
-
-set -x
-PS4=$(printf '\e[38;5;10m[ CMD ] \e[m')
-
 #------------------------------------------------------------------[ PACKAGES ]-
 
 apk add efibootmgr grub-efi e2fsprogs
@@ -21,9 +16,3 @@ blkid | while read -r blk_ln; do
         [ "$TYPE" = "swap" ] && \
                 printf 'UUID=%s\tswap\tswap\tdefaults\t0 0\n' "$UUID"
 done >> /mnt/etc/fstab
-
-#-----------------------------------------------------------------------[ FIN ]-
-
-set +x
-
-# vim: set ts=8 sw=8 et cc=81:

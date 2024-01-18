@@ -1,10 +1,5 @@
 #!/bin/sh
 
-#---------------------------------------------------------------------[ START ]-
-
-set -x
-PS4="$(printf '\e[38;5;10m[ CMD ] \e[m')"
-
 #----------------------------------------------------------------------[ USER ]-
 
 adduser -g sidd sidd
@@ -25,9 +20,9 @@ LOCALE_PATH='/etc/profile.d/20locale.sh'
 sed -i 's/[#]*\(unicode=\).*/\1"YES"/g' /etc/rc.conf
 
 tee "$LOCALE_PATH" <<-__LOCALE_FILE__
-        export LANG=en_US.UTF-8
-        export CHARSET=\${CHARSET:-UTF-8}
-        export LC_COLLATE=\${LC_COLLATE:-C}
+export LANG=en_US.UTF-8
+export CHARSET=\${CHARSET:-UTF-8}
+export LC_COLLATE=\${LC_COLLATE:-C}
 __LOCALE_FILE__
 
 #----------------------------------------------------------------------[ DOAS ]-
@@ -37,7 +32,7 @@ printf 'permit :wheel\n' >> /etc/doas.conf
 
 #----------------------------------------------------------------------[ XORG ]-
 
-cat <<__MSG__
+cat -- - <<-__MSG__
 Install Xorg and fonts ?
 
 Press
@@ -49,9 +44,3 @@ read -r _ && setup-xorg-base xf86-video-intel xf86-input-libinput \
                              font-terminus font-noto-all font-noto-cjk
 
 fc-cache -fv
-
-#-----------------------------------------------------------------------[ FIN ]-
-
-set +x
-
-# vim: set ts=8 sw=8 et cc=81:
