@@ -10,12 +10,12 @@ mkdir -p /etc/udhcpc
 printf 'alpine\n'           > /etc/hostname
 printf 'RESOLV_CONF="no"\n' > /etc/udhcpc/udhcpc.conf
 
-cat <<-__HOSTS__  > /etc/hosts
+cat <<__HOSTS__  > /etc/hosts
 127.0.0.1	alpine.localdomain alpine
 ::1		alpine.localdomain alpine
 __HOSTS__
 
-cat <<-__RESOLV_CONF__ > /etc/resolv.conf
+cat <<__RESOLV_CONF__ > /etc/resolv.conf
 nameserver 9.9.9.9
 nameserver 1.1.1.1
 __RESOLV_CONF__
@@ -25,13 +25,14 @@ rc-service hostname restart
 setup-interfaces
 
 WPA_CONF_FILE='/etc/wpa_supplicant/wpa_supplicant.conf'
-cat -- - "${WPA_CONF_FILE}" <<-__WPA_CONF__ | tee "${WPA_CONF_FILE}"
-ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=wheel
-update_config=1
-__WPA_CONF__
+
+sed -i '
+1i ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=wheel
+1i update_config=1
+' "${WPA_CONF_FILE}"
 
 rc-update add networking boot && rc-service networking start
-rc-update add seedrng boot && rc-service seedrng start
+rc-update add seedrng    boot && rc-service seedrng    start
 
 #------------------------------------------------------------------[ PACKAGES ]-
 
@@ -46,9 +47,9 @@ apk -q add tzdata acpid acpid-openrc zzz cfdisk lsblk
 
 install -Dm 0644 /usr/share/zoneinfo/Asia/Kolkata /etc/zoneinfo/Asia/Kolkata
 
-cat -- - <<-__EOF__ >> /etc/profile.d/timezone.sh
+cat <<EOF >> /etc/profile.d/timezone.sh
 export TZ='${TZ:-Asia/Kolkata}'
-__EOF__
+EOF
 
 . /etc/profile.d/timezone.sh
 
